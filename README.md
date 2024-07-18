@@ -67,36 +67,9 @@ Ensure you have the following installed on your Mac:
 - [Homebrew](https://brew.sh/)
 - [.NET SDK](https://dotnet.microsoft.com/en-us/download): `brew install --cask dotnet-sdk`
 - [Docker](https://docs.docker.com/get-docker/): `brew install --cask docker`
+- [Terraform](https://www.terraform.io/): `brew install terraform`
 
-### Setup
-1. Start the MSSQL container
-    - `docker-compose up -d`
-2. Generate and apply initial migrations
-    - `dotnet ef database update`
-3. Run the app:
-    - `dotnet run`
-
-## Docker Commands
-- `docker compose down`
-- `docker compose up -d`
-
-
-## dotnet CLI Commands
-- `dotnet ef migrations add InitialCreate`  
-- `dotnet run`
-- `dotnet ef migrations add AddUserTable`
-- `dotnet ef database update`
-
-## DB
-### SQL Editor
-[azure data studio](https://learn.microsoft.com/en-us/azure-data-studio/)
-`brew install --cask azure-data-studio`
-
-### Connection info
-    - within appsettings.json: `"DefaultConnection": "Server=localhost,1433;Database=master;User Id=sa;Password=YourStrong!Passw0rd;Encrypt=false;TrustServerCertificate=true;"`
-    - within dadbod-ui: `:DB sqlserver://sa:YourStrong!Passw0rd@localhost:1433?database=master&TrustServerCertificate=true`
-
-### DB Driver
+### Setup DB Driver
     [microsoft-odbc-18](https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/install-microsoft-odbc-driver-sql-server-macos?view=sql-server-ver16#microsoft-odbc-18)
 
 1. `brew tap microsoft/mssql-release https://github.com/Microsoft/homebrew-mssql-release`
@@ -115,11 +88,48 @@ Add the following to `~/.odbc.ini`
     TrustServerCertificate = Yes
     ```
 
+### Apple Silicon M1, M2, M3 Mac extra step (ignore if you have an older Mac)
+- Once Docker Desktop is running, open the Dashboard and go into Settings (Cog at the top right)
+- Open the “Features in development” menu item, and select the “Use Rosetta for x86/amd64 emulation on Apple Silicon” checkbox
+- Restart Docker
 
-### Test DB Connection
+### Test DB Connection (After starting container)
 - `isql MSSQLDocker sa 'YourStrong!Passw0rd'`
 - Run query from terminal: `sqlcmd -S localhost,1433 -U sa -P 'YourStrong!Passw0rd' -d master -C -W -s '|' -Q "SELECT * FROM Users;"`
 - `bcp master.INFORMATION_SCHEMA.TABLES out OutFile.dat -S "localhost,1433;TrustServerCertificate=yes" -U sa -P 'YourStrong!Passw0rd' -c`
+
+
+### Setup
+1. Start the MSSQL container
+    - `docker compose up -d`
+2. Install entity framework
+    - `dotnet tool install --global dotnet-ef`
+3. Generate and apply initial migrations
+    - `dotnet ef database update`
+4. Run the app:
+    - `dotnet run` or `dotnet run --environment Azure` or `dotnet run --environment Development`
+
+## Docker Commands
+- `docker compose down`
+- `docker compose up -d`
+
+
+## dotnet CLI Commands
+- `dotnet ef migrations add InitialCreate`  
+- `dotnet run`
+- Run using development settings: `dotnet run --environment Development`
+- Run using db in Azure: `dotnet run --environment Azure`
+- `dotnet ef migrations add AddUserTable`
+- `dotnet ef database update`
+
+## DB
+### SQL Editor
+[azure data studio](https://learn.microsoft.com/en-us/azure-data-studio/)
+`brew install --cask azure-data-studio`
+
+### Connection info
+    - within appsettings.json: `"DefaultConnection": "Server=localhost,1433;Database=master;User Id=sa;Password=YourStrong!Passw0rd;Encrypt=false;TrustServerCertificate=true;"`
+    - within dadbod-ui: `:DB sqlserver://sa:YourStrong!Passw0rd@localhost:1433?database=master&TrustServerCertificate=true`
 
 ## Swagger UI URL
 http://localhost:5056/swagger/index.html
@@ -153,3 +163,54 @@ This command applies the migrations to the database. It executes the Up methods 
     - Executing the SQL commands generated in the Up methods of each migration file.
     - Updating the __EFMigrationsHistory table in the database to track which migrations have been applied.
 
+## Azure
+
+### Setup
+- `brew install azure-cli`
+- `terraform init`
+- `terraform apply`
+
+### Login:
+`az login`
+
+### Create Infra in Azure
+#### Connection String settings
+Server=tcp:fooBarSqlServer.database.windows.net,1433;Initial Catalog=fooBarDatabase;Persist Security Info=False;User ID=fooBarAdmin;Password=YourStrong!Passw0rd;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+1. Spin up Resources with Terraform
+   - `terraform init`
+   - `terraform apply`
+   
+2. Create and Apply Migrations: 
+  - `dotnet ef database update`
+
+3. Update ODBC settings:
+   - `Driver={ Driver 18 for SQL Server};Server=tcp:foobarsqlserver.database.windows.net,1433;Database=foobardatabase;Uid=foobaradmin;Pwd={YourStrong!Passw0rd};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;`
+
+4. Publish new Docker version
+   - publish to dockerhub
+   ```# log in to dockerhub
+        docker login
+
+        # build image
+        docker build -t kaiftait/foobar:latest .
+
+        # push image
+        docker push kaiftait/foobar:latest
+   ```
+
+   - ```# Log in to Azure Container Registry
+        az acr login --name foobarcontainerregistry
+
+        # Build the Docker image
+        docker build -t foobarcontainerregistry.azurecr.io/foobar:latest .
+
+        # Push the Docker image to Azure Container Registry
+        docker push foobarcontainerregistry.azurecr.io/foobar:latest```
+5. Mark resources for recreation in terraform
+   - `terraform taint azurerm_container_group.foobar`
+
+6. Apply changes
+   - `terraform apply`
+   
+7. Get App IP
+   - `az container show --resource-group foobar-resource-group --name foobarcontainergroup --query ipAddress.ip --output tsv`

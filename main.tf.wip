@@ -1,0 +1,168 @@
+# Configure the Azure provider
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
+  }
+  required_version = ">= 0.14.9"
+}
+
+provider "azurerm" {
+  features {}
+}
+
+# Create a Resource Group
+resource "azurerm_resource_group" "foobar" {
+  name     = "foobar-resource-group"
+  location = "Australia East"
+}
+
+# Create a Network Security Group
+resource "azurerm_network_security_group" "foobar_nsg" {
+  name                = "foobar-nsg"
+  location            = azurerm_resource_group.foobar.location
+  resource_group_name = azurerm_resource_group.foobar.name
+
+  security_rule {
+    name                       = "AllowSpecificIP"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "5056"
+    destination_port_range     = "*" # Specify the port your container group uses
+    source_address_prefix      = "101.182.140.219" # Replace with the IP address you want to allow
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "DenyAllOthers"
+    priority                   = 200
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+# Associate the NSG with the Subnet
+resource "azurerm_subnet_network_security_group_association" "foobar_nsg_association" {
+  subnet_id                 = azurerm_subnet.foobar.id
+  network_security_group_id = azurerm_network_security_group.foobar_nsg.id
+}
+
+# Create a Virtual Network
+resource "azurerm_virtual_network" "foobar" {
+  name                = "foobar-vnet"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.foobar.location
+  resource_group_name = azurerm_resource_group.foobar.name
+}
+
+# Create a Subnet for the container group
+resource "azurerm_subnet" "foobar" {
+  name                 = "foobar-subnet"
+  resource_group_name  = azurerm_resource_group.foobar.name
+  virtual_network_name = azurerm_virtual_network.foobar.name
+  address_prefixes     = ["10.0.1.0/24"]
+
+  service_endpoints = ["Microsoft.Sql"]
+
+  delegation {
+    name = "delegation"
+
+    service_delegation {
+      name    = "Microsoft.ContainerInstance/containerGroups"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
+    }
+  }
+}
+
+# Create a Public IP for the NAT Gateway
+resource "azurerm_public_ip" "foobar" {
+  name                = "foobar-public-ip"
+  resource_group_name = azurerm_resource_group.foobar.name
+  location            = azurerm_resource_group.foobar.location
+  allocation_method   = "Static"
+#   sku                 = "Standard"
+}
+
+# Create a NAT Gateway
+resource "azurerm_nat_gateway" "foobar" {
+  name                = "foobar-nat-gateway"
+  resource_group_name = azurerm_resource_group.foobar.name
+  location            = azurerm_resource_group.foobar.location
+  sku_name            = "Standard"
+
+#   public_ip {
+#     id = azurerm_public_ip.foobar.id
+#   }
+}
+
+# Associate the NAT Gateway with the Subnet
+resource "azurerm_subnet_nat_gateway_association" "foobar" {
+  subnet_id      = azurerm_subnet.foobar.id
+  nat_gateway_id = azurerm_nat_gateway.foobar.id
+}
+
+# Create an Azure SQL Server
+resource "azurerm_mssql_server" "foobar" {
+  name                         = "foobarsqlserver"
+  resource_group_name          = azurerm_resource_group.foobar.name
+  location                     = azurerm_resource_group.foobar.location
+  administrator_login          = "foobaradmin"
+  administrator_login_password = "YourStrong!Passw0rd"
+  version                      = "12.0"
+}
+
+# Create an Azure SQL Database
+resource "azurerm_mssql_database" "foobar" {
+  name     = "foobardatabase"
+  server_id = azurerm_mssql_server.foobar.id
+  sku_name            = "S0"
+
+}
+
+# Allow access from the NAT Gateway's Public IP
+resource "azurerm_mssql_firewall_rule" "allow_nat_gateway_ip" {
+  name                = "AllowNATGatewayIP"
+  server_id           = azurerm_mssql_server.foobar.id
+  start_ip_address    = azurerm_public_ip.foobar.ip_address
+  end_ip_address      = azurerm_public_ip.foobar.ip_address
+}
+
+# Create an Azure Container Group within the VNet
+resource "azurerm_container_group" "foobar" {
+  name                = "foobar-container-group"
+  location            = azurerm_resource_group.foobar.location
+  resource_group_name = azurerm_resource_group.foobar.name
+  os_type             = "Linux"
+
+#   subnet_ids = [azurerm_subnet.foobar.id]
+
+  container {
+    name   = "webapp"
+    image  = "kaiftait/foobar:latest"
+    cpu    = "0.5"
+    memory = "1.5"
+
+    ports {
+      port     = 5056
+      protocol = "TCP"
+    }
+
+    environment_variables = {
+      ASPNETCORE_ENVIRONMENT        = "Development"
+      ConnectionStrings__AzureConnection = "Server=tcp:${azurerm_mssql_server.foobar.name}.database.windows.net,1433;Initial Catalog=${azurerm_mssql_database.foobar.name};Persist Security Info=False;User ID=foobaradmin;Password=YourStrong!Passw0rd;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+    }
+  }
+
+  tags = {
+    environment = "development"
+  }
+}

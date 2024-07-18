@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  webapp:
+    image: kaiftait/foobar:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5056:5056"
+    depends_on:
+      - mssql
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=master;User Id=sa;Password=YourStrong!Passw0rd;Encrypt=false;TrustServerCertificate=true;
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: mssql
+    environment:
+      - SA_PASSWORD=YourStrong!Passw0rd
+      - ACCEPT_EULA=Y
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+
+volumes:
+  mssql-data:

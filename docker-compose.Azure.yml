@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  webapp:
+    image: kaiftait/foobar:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5056:5056"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Azure
+      - X-API-KEY=secure123
+      - ConnectionStrings__DefaultConnection=Server=tcp:foobarsqlserver.database.windows.net,1433;Initial Catalog=foobardatabase;Persist Security Info=False;User ID=foobaradmin;Password=YourStrong!Passw0rd;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+
+volumes:
+  mssql-data:
