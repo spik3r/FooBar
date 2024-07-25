@@ -6,6 +6,11 @@ using FooBar.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// builder.Services.AddHttpClient<JsonPlaceholderService>(client =>
+// {
+//     client.BaseAddress = new Uri("https://jsonplaceholder.typicode.com/");
+// });
+
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -20,9 +25,18 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<ISampleEntityRepository, SampleEntityRepository>();
 builder.Services.AddScoped<ISampleEntityService, SampleEntityService>();
 
+
 // Register User repository and service
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IUserService, UserService>();
+
+builder.Services.AddScoped<IJsonPlaceholderService, JsonPlaceholderService>();
+// https://devblogs.microsoft.com/dotnet/dotnet-8-networking-improvements/
+builder.Services.AddHttpClient("JsonPlaceholder", client =>
+{
+    client.BaseAddress = new Uri("https://jsonplaceholder.typicode.com/");
+});
+
 
 // Extra debugging...
 builder.Logging.ClearProviders();
