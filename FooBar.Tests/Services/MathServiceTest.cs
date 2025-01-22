@@ -1,10 +1,11 @@
 using FooBar.Services;
+using NUnit.Framework;
 
 namespace FooBar.Tests;
 
 public class MathServiceTest
 {
-    [Fact]
+    [Test]
     public void TestAdd()
     {
         // Arrange
@@ -14,7 +15,7 @@ public class MathServiceTest
         var result = mathService.Add(1, 1);
 
         // Assert
-        Assert.Equal(result, 2);
+         Assert.That(result, Is.EqualTo(2));
     }
 
 

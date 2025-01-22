@@ -92,6 +92,7 @@ Add the following to `~/.odbc.ini`
 - Once Docker Desktop is running, open the Dashboard and go into Settings (Cog at the top right)
 - Open the “Features in development” menu item, and select the “Use Rosetta for x86/amd64 emulation on Apple Silicon” checkbox
 - Restart Docker
+- <b>Can potentially avoid doing the above by setting this as an env variable: `export DOCKER_DEFAULT_PLATFORM=linux/amd64`</b>
 
 ### Test DB Connection (After starting container)
 - `isql MSSQLDocker sa 'YourStrong!Passw0rd'`
