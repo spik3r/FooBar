@@ -12,18 +12,21 @@ using Newtonsoft.Json;
 public class ExternalApiController : ControllerBase
 {
     private readonly HttpClient _httpClient;
+    private readonly string externalApiBaseUrl;
 
     // Inject HttpClient via constructor
-    public ExternalApiController(IHttpClientFactory httpClientFactory)
+    public ExternalApiController(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
         _httpClient = httpClientFactory.CreateClient();
+        externalApiBaseUrl = configuration["ApiSettings:ExternalApiBaseUrl"];
     }
 
     [HttpGet("posts")]
     public async Task<IActionResult> GetPosts()
     {
         // The external API URL (JSONPlaceholder in this case)
-        string apiUrl = "https://jsonplaceholder.typicode.com/posts";
+        // string apiUrl = "https://jsonplaceholder.typicode.com/posts";
+        string apiUrl = externalApiBaseUrl + "/posts";
 
         // Make the request to the external API
         HttpResponseMessage response = await _httpClient.GetAsync(apiUrl);
@@ -54,7 +57,9 @@ public class ExternalApiController : ControllerBase
     public async Task<ActionResult<ResponseModel>> GetPostById(int id)
     {
         // The external API URL (JSONPlaceholder in this case)
-        string apiUrl = $"https://jsonplaceholder.typicode.com/posts/{id}";
+        // string apiUrl = $"https://jsonplaceholder.typicode.com/posts/{id}";
+        string apiUrl = new Uri(new Uri(externalApiBaseUrl), $"/posts/{id}").ToString();
+        // string apiUrl = externalApiBaseUrl + "/posts/{id}"; 
 
         // Make the request to the external API
         HttpResponseMessage response = await _httpClient.GetAsync(apiUrl);

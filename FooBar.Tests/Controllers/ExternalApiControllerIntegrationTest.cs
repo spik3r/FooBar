@@ -1,79 +1,71 @@
-using System.Net;
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
-using FooBar.Models;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.DependencyInjection;
-using Moq;
-using Moq.Protected;
-using Newtonsoft.Json;
+using Microsoft.Extensions.Configuration;
 using NUnit.Framework;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
+using WireMock.Server;
+using WireMock.Settings;
 
 namespace FooBar.Tests.Controllers;
 
 [TestFixture] 
 public class ExternalApiControllerIntegrationTest
 {
+    
     private HttpClient client;
     private WebApplicationFactory<Program> application;
+    private WireMockServer wireMockServer; 
     
     [SetUp]
     public void SetUp()
     {
-        // Setup the fake post data to be returned
-        var fakePost = new
-        {
-            Id = 618,
-            Title = "Test Title",
-            UserId = 382,
-            Body = "Test Body"
-        };
-
-        // Create the WebApplicationFactory with the correct configuration
-        application = new WebApplicationFactory<Program>()
+        
+        // application = new WebApplicationFactory<Program>();
+        application = new WebApplicationFactory<Program>() 
             .WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((context, config) =>
             {
-                builder.ConfigureServices(services =>
-                {
-                    // Remove the default HttpClient registration to avoid conflicts
-                    var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IHttpClientFactory));
-                    if (descriptor != null)
-                    {
-                        services.Remove(descriptor); // Remove the default IHttpClientFactory registration
-                    }
+                // Remove default appsettings.json file
+                config.Sources.Clear();
 
-                    // Mock HttpMessageHandler to simulate HTTP responses
-                    var mockHandler = new Mock<HttpMessageHandler>();
-
-                    // Setup the mock to return a custom response
-                    mockHandler.Protected()
-                        .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                            It.IsAny<HttpRequestMessage>(), It.IsAny<CancellationToken>())
-                        .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
-                        {
-                            Content = new StringContent(
-                                JsonConvert.SerializeObject(fakePost), Encoding.UTF8, "application/json")
-                        });
-
-                    // Create HttpClient using the mocked handler
-                    var mockHttpClient = new HttpClient(mockHandler.Object);
-
-                    // Register the mocked HttpClient into the service collection
-                    services.AddSingleton(mockHttpClient);
-                });
+                // Add the custom test appsettings file
+                config.AddJsonFile("appsettings.Test.json", optional: false, reloadOnChange: true);
             });
-
+        });
         client = application.CreateClient();
+        
+        wireMockServer = WireMockServer.Start(new WireMockServerSettings
+        {
+            Urls = ["http://localhost:8888"]
+        });
+        Console.WriteLine($"WireMock server running at {wireMockServer.Url}");
+        
+        // Mock the response for the JSON Placeholder API
+        wireMockServer.Given(Request.Create().WithPath("/posts/2").UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("{ \"userId\": 123, \"id\": 2, \"title\": \"mocked title\", \"body\": \"mocked body content\" }"));
+        
+
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        wireMockServer.Stop();
+        application.Dispose();
     }
     
     [Test]
-    public async Task GetPostByIdWorksAsExpected()
+    public async Task GetPostByIdWorksAsExpectedCallingRealApi()
     {
-        /*await using var application = new WebApplicationFactory<Program>();
-        using var client = application.CreateClient();*/
+        await using var realApplication = new WebApplicationFactory<Program>();
+        using var realClient = realApplication.CreateClient();
  
-        var response = await client.GetAsync("api/ExternalApi/posts/1");
+        var response = await realClient.GetAsync("api/ExternalApi/posts/1");
         Assert.That(200 == (int)response.StatusCode, "The status code should be 200 OK.");
         string responseBody = await response.Content.ReadAsStringAsync();
         Console.WriteLine(responseBody);
@@ -85,20 +77,42 @@ public class ExternalApiControllerIntegrationTest
         JsonElement idElement = responseModelElement.GetProperty("id"); 
         JsonElement postElement = responseModelElement.GetProperty("post"); 
         JsonElement postIdElement = postElement.GetProperty("id");
+        JsonElement postTitleElement = postElement.GetProperty("title");
 
         string responseMessage = messageElement.GetString(); 
         int responseId = idElement.GetInt32(); 
         int responsePostId = postIdElement.GetInt32(); 
+        string responseTitle = postTitleElement.GetString();
         Assert.That(responseMessage, Is.EqualTo("Post 1 retrieved successfully."), "The response message is incorrect.");
         Assert.That(responseId, Is.EqualTo(1), "The idElement is incorrect.");
         Assert.That(responsePostId, Is.EqualTo(1), "The postIdElement is incorrect.");
-        /*Assert.Equal(200, (int)response.StatusCode, "The status code should be 200 OK.");
-        // Assert(response.StatusCode).Should().Be(HttpStatusCode.OK);
-        Assert.AreEqual(1, response.Id, "The post ID should be 1.");
+        Assert.That(responseTitle, Is.EqualTo("sunt aut facere repellat provident occaecati excepturi optio reprehenderit"), "The responseTitle is incorrect.");
+    } 
+    
+    [Test]
+    public async Task GetPostById2WorksAsExpectedCallingWireMockApi()
+    {
+        var response = await client.GetAsync("api/ExternalApi/posts/2");
+        Assert.That(200 == (int)response.StatusCode, "The status code should be 200 OK.");
         string responseBody = await response.Content.ReadAsStringAsync();
-
         Console.WriteLine(responseBody);
-        responseBody.Should().Be("{\"version\":\"0.0.0.0\"}");*/
-            
+        Assert.That(!string.IsNullOrWhiteSpace(responseBody), "The response body should not be null or empty.");
+        using JsonDocument doc = JsonDocument.Parse(responseBody);
+        JsonElement root = doc.RootElement;
+        JsonElement responseModelElement = root.GetProperty("responseModel");
+        JsonElement messageElement = root.GetProperty("message"); 
+        JsonElement idElement = responseModelElement.GetProperty("id"); 
+        JsonElement postElement = responseModelElement.GetProperty("post"); 
+        JsonElement postIdElement = postElement.GetProperty("id");
+        JsonElement postTitleElement = postElement.GetProperty("title");
+
+        string responseMessage = messageElement.GetString(); 
+        int responseId = idElement.GetInt32(); 
+        int responsePostId = postIdElement.GetInt32(); 
+        string responseTitle = postTitleElement.GetString();
+        Assert.That(responseMessage, Is.EqualTo("Post 2 retrieved successfully."), "The response message is incorrect.");
+        Assert.That(responseId, Is.EqualTo(2), "The idElement is incorrect.");
+        Assert.That(responsePostId, Is.EqualTo(2), "The postIdElement is incorrect.");
+        Assert.That(responseTitle, Is.EqualTo("mocked title"), "The responseTitle is incorrect.");
     } 
 }

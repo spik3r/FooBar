@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using FooBar.Controllers;
 using FooBar.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Moq.Protected;
 using NUnit.Framework;
 
@@ -20,7 +21,8 @@ public class ExternalApiControllerTests
         private Mock<HttpMessageHandler> _httpMessageHandlerMock;
         private ExternalApiController _controller;
         private HttpClient _httpClient;
-
+        private IConfiguration _configuration;
+  
         [SetUp]
         public void Setup()
         {
@@ -34,8 +36,17 @@ public class ExternalApiControllerTests
             _httpClientFactoryMock = new Mock<IHttpClientFactory>();
             _httpClientFactoryMock.Setup(factory => factory.CreateClient(It.IsAny<string>())).Returns(_httpClient);
 
+            var inMemorySettings = new Dictionary<string, string>
+            {
+                { "ApiSettings:ExternalApiBaseUrl", "http://localhost:8888" }  // Mock URL for testing
+            };
+
+            _configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(inMemorySettings)
+                .Build();
+            
             // Instantiate the controller with the mocked HttpClientFactory
-            _controller = new ExternalApiController(_httpClientFactoryMock.Object);
+            _controller = new ExternalApiController(_httpClientFactoryMock.Object, _configuration);
         }
 
         [Test]
